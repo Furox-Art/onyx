@@ -47,7 +47,13 @@ def discover_jsm_fields(jira_client: JIRA) -> JsmFieldMap:
     returned and the extractors fall back to structural value detection.
     """
     try:
-        all_fields = jira_client.fields()
+        # SourceOperations exposes list_fields(), while legacy Jira SDK tests
+        # still expose fields(). Inspect the class, not a MagicMock instance,
+        # to avoid treating arbitrary mocked attributes as implemented calls.
+        has_gateway_method = callable(getattr(type(jira_client), "list_fields", None))
+        all_fields = (
+            jira_client.list_fields() if has_gateway_method else jira_client.fields()
+        )
     except Exception:
         logger.warning(
             "Unable to list Jira fields for JSM field discovery; "
