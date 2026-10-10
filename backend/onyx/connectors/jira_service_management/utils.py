@@ -71,19 +71,21 @@ def discover_jsm_fields(jira_client: JIRA) -> JsmFieldMap:
     return field_map
 
 
-def _get_raw_field(issue: Issue, field_id: str) -> Any:
-    try:
-        return issue.raw["fields"][field_id]
-    except (AttributeError, KeyError, TypeError):
-        return None
+def _issue_raw_fields(issue: Issue | dict[str, Any]) -> dict[str, Any]:
+    """JSM accepts the current Jira raw-JSON gateway and legacy SDK fixtures."""
+    raw: Any = issue if isinstance(issue, dict) else getattr(issue, "raw", None)
+    if not isinstance(raw, dict):
+        return {}
+    fields = raw.get("fields")
+    return fields if isinstance(fields, dict) else {}
 
 
-def _raw_field_values(issue: Issue) -> list[Any]:
-    try:
-        raw_fields = issue.raw["fields"]
-    except (AttributeError, KeyError, TypeError):
-        return []
-    return list(raw_fields.values()) if isinstance(raw_fields, dict) else []
+def _get_raw_field(issue: Issue | dict[str, Any], field_id: str) -> Any:
+    return _issue_raw_fields(issue).get(field_id)
+
+
+def _raw_field_values(issue: Issue | dict[str, Any]) -> list[Any]:
+    return list(_issue_raw_fields(issue).values())
 
 
 def _name_from_request_type_value(value: dict[str, Any]) -> str | None:
@@ -223,47 +225,62 @@ def build_jsm_metadata(
 
 
 def get_jsm_comment_strs(
-    issue: Issue,
+    issue: Issue | dict[str, Any],
     comment_email_blacklist: tuple[str, ...] = (),
     include_internal_comments: bool = False,
 ) -> list[str]:
-    """Extract comment text with JSM internal-note awareness.
+    """Extract public JSM comments from raw Jira issues or SDK fixtures.
 
-    JSM comments carry a ``jsdPublic`` flag: ``False`` marks internal agent
-    notes that are not visible to customers. Internal notes are skipped unless
-    ``include_internal_comments`` is set; when included, they are tagged with
-    an ``[Internal Note]`` prefix so retrieval can distinguish them.
+    The raw JSON gateway returns comment dictionaries; legacy tests may still
+    supply Jira SDK resources. Missing or malformed comment data is skipped,
+    and internal agent notes are never exposed unless explicitly enabled.
     """
-    comment_strs: list[str] = []
-    try:
-        comments = issue.fields.comment.comments
-    except (AttributeError, TypeError):
-        return comment_strs
+    if isinstance(issue, dict):
+        comment_field = _issue_raw_fields(issue).get("comment")
+        comments = (
+            comment_field.get("comments", [])
+            if isinstance(comment_field, dict)
+            else []
+        )
+    else:
+        try:
+            comments = issue.fields.comment.comments
+        except (AttributeError, TypeError):
+            return []
 
+    if not isinstance(comments, list):
+        return []
+
+    comment_strs: list[str] = []
     for comment in comments:
         try:
-            if (
-                hasattr(comment, "author")
-                and hasattr(comment.author, "emailAddress")
-                and comment.author.emailAddress in comment_email_blacklist
-            ):
+            raw_comment: Any = (
+                comment if isinstance(comment, dict) else comment.raw
+            )
+            if not isinstance(raw_comment, dict):
                 continue
 
-            if isinstance(comment.body, str):
-                body_text = comment.body
-            else:
-                body_text = extract_text_from_adf(comment.raw["body"])
+            author = raw_comment.get("author")
+            author_email = (
+                author.get("emailAddress")
+                if isinstance(author, dict)
+                else getattr(getattr(comment, "author", None), "emailAddress", None)
+            )
+            if author_email in comment_email_blacklist:
+                continue
 
+            body = raw_comment.get("body")
+            if not isinstance(comment, dict):
+                body = getattr(comment, "body", body)
+            body_text = (
+                body
+                if isinstance(body, str)
+                else extract_text_from_adf(body if isinstance(body, dict) else None)
+            )
             if not body_text or not body_text.strip():
                 continue
 
-            # Accessed directly (repo convention: no getattr). Comment
-            # resources always expose ``raw``; any malformed comment is
-            # handled by the except clause below.
-            raw_comment = comment.raw
-            is_internal = (
-                isinstance(raw_comment, dict) and raw_comment.get("jsdPublic") is False
-            )
+            is_internal = raw_comment.get("jsdPublic") is False
             if is_internal:
                 if not include_internal_comments:
                     continue
