@@ -41,7 +41,7 @@ logger = setup_logger()
 
 def _issue_key(issue: Issue | dict[str, Any]) -> str:
     """Stable issue key for legacy Jira SDK fixtures and the raw API gateway."""
-    return str(issue["key"] if isinstance(issue, dict) else _issue_key(issue))
+    return str(issue["key"] if isinstance(issue, dict) else issue.key)
 
 
 def _attachment_field(attachment: Any, name: str, default: Any = "") -> Any:
