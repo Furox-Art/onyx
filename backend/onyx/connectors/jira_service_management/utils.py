@@ -105,7 +105,7 @@ def _name_from_request_type_value(value: dict[str, Any]) -> str | None:
 
 
 def extract_customer_request_type(
-    issue: Issue, field_id: str | None = None
+    issue: Issue | dict[str, Any], field_id: str | None = None
 ) -> str | None:
     """Extract the JSM customer request type, best effort.
 
@@ -155,7 +155,7 @@ def _looks_like_organizations(value: Any) -> bool:
     )
 
 
-def extract_organizations(issue: Issue, field_id: str | None = None) -> list[str]:
+def extract_organizations(issue: Issue | dict[str, Any], field_id: str | None = None) -> list[str]:
     """Extract the names of the JSM organizations on the request, best effort."""
     candidates: list[Any] = []
     if field_id:
@@ -174,7 +174,7 @@ def extract_organizations(issue: Issue, field_id: str | None = None) -> list[str
     return []
 
 
-def extract_sla_info(issue: Issue) -> dict[str, str]:
+def extract_sla_info(issue: Issue | dict[str, Any]) -> dict[str, str]:
     """Extract SLA statuses keyed by the admin-defined SLA name, best effort.
 
     An ongoing cycle maps to "In Progress" (or "Breached"), the latest
@@ -208,7 +208,7 @@ def extract_sla_info(issue: Issue) -> dict[str, str]:
 
 
 def build_jsm_metadata(
-    issue: Issue, field_map: JsmFieldMap
+    issue: Issue | dict[str, Any], field_map: JsmFieldMap
 ) -> dict[str, str | list[str]]:
     """Build the JSM specific metadata entries for a ticket document."""
     metadata: dict[str, str | list[str]] = {}
